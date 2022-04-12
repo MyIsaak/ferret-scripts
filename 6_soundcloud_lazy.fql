@@ -1,0 +1,29 @@
+LET doc = DOCUMENT('https://soundcloud.com/charts/top', { driver: "cdp" })
+
+LET endSelector = ''
+LET listSelector = '.chartTracks ul'
+
+WAIT_ELEMENT(doc, listSelector)
+
+LET list = ELEMENT(doc, listSelector)
+LET initialCount = ELEMENTS_COUNT(list, 'li')
+LET lastItem = 50 // soundcloud displays max 50 latest tracks
+
+// Call an async function that handles scroll
+LET preload = (
+    FOR i DO WHILE !ELEMENT_EXISTS(doc, '.chartTracksEnd')
+        // if second iteration or further, scroll to bottom, then to top
+        LET if = i > 0 && SCROLL_BOTTOM(doc) && WAIT(500) && SCROLL_TOP(doc)
+
+        RETURN NONE
+)
+
+// while scrolling down, wait until we have a number of items
+WAIT_ELEMENT(list, FMT('li:nth-child({})', lastItem))
+
+FOR track, i IN ELEMENTS(list, 'li .chartTrack__details')
+    RETURN {
+        num: i + 1,
+        artist: TRIM(INNER_TEXT(track, '.chartTrack__username')),
+        track: TRIM(INNER_TEXT(track, '.chartTrack__title'))
+    }

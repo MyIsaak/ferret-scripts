@@ -1,0 +1,15 @@
+LET doc = DOCUMENT("https://github.com/marketplace?category=api-management&type=apps", { driver: "cdp" })
+
+// we define selectors on top, to allow quick fixes
+LET nextSelector = "a.next_page"
+LET elementsSelector = '.col-md-6[data-hydro-click]'
+
+WAIT_ELEMENT(doc, elementsSelector)
+// continue looping until next page button doesn't exist
+FOR i DO WHILE ELEMENT_EXISTS(doc, nextSelector)
+    // click next button after 1st iteration
+    LET wait = i > 0 ? CLICK(doc, nextSelector) : false
+    LET nav = wait ? WAIT(2000) && WAIT_ELEMENT(doc, elementsSelector) : false
+
+    FOR el in ELEMENTS(doc, elementsSelector)
+        RETURN el

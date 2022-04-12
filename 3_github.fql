@@ -1,0 +1,9 @@
+LET page = DOCUMENT("https://github.com/trending")
+
+FOR row IN ELEMENTS(page, "article")
+    LET name = INNER_TEXT(row, ".h3")
+    LET description = INNER_TEXT(row, ":nth-child(3)")
+    
+    RETURN { name, description }
+
+            

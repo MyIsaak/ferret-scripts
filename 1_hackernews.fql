@@ -1,0 +1,3 @@
+LET doc = DOCUMENT('https://news.ycombinator.com/')
+FOR post IN ELEMENTS(doc, '.titlelink')
+RETURN post.attributes.href

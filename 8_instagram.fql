@@ -1,0 +1,82 @@
+LET doc = DOCUMENT("https://www.instagram.com/", { driver: "cdp", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.87 Safari/537.36" })
+
+LET cookieBtnSel = X("//*[normalize-space(text()) = 'Only allow essential cookies']")
+LET usernameSel = 'input[name="username"]'
+LET passwordSel = 'input[name="password"]'
+LET loginBtnSel = X("//*[normalize-space(text()) = 'Log In']")
+LET searchSel = 'input[placeholder="Search"]'
+LET noPostsSel = X("//*[normalize-space(text()) = 'posts']")
+LET postsSel = "article a[tabindex='0']"
+LET loadingSel = 'svg[aria-label="Loading..."]'
+LET followersSel = X("//*[normalize-space(text()) = 'followers']")
+LET followingSel = X("//*[normalize-space(text()) = 'following']")
+
+// click accept cookies
+WAIT(RAND(500))
+CLICK(doc, cookieBtnSel)
+
+// login
+WAIT(RAND(300))
+HOVER(doc, usernameSel)
+WAIT(RAND(100))
+INPUT(doc, usernameSel, @user)
+
+WAIT(RAND(500))
+HOVER(doc, passwordSel)
+WAIT(RAND(100))
+INPUT(doc, passwordSel, @pass)
+WAIT(RAND(300))
+HOVER(doc, passwordSel)
+CLICK(doc, loginBtnSel)
+
+WAIT_NAVIGATION(doc)
+WAIT_ELEMENT(doc, searchSel)
+
+// for each celebrity:
+LET profiles = (
+    FOR profile IN @profiles
+        // search celebrity
+        WAIT(RAND(500))
+        HOVER(doc, searchSel)
+        WAIT(RAND(100))
+        INPUT(doc, searchSel, profile)
+        WAIT_ELEMENT(doc, X(FMT("//*[normalize-space(text()) = '{}']", profile)))
+
+        // open celebrity profile
+        WAIT(RAND(300))
+        PRESS_SELECTOR(doc, searchSel, "Enter")
+        WAIT(RAND(100))
+        PRESS_SELECTOR(doc, searchSel, "Enter")
+
+        WAIT_ELEMENT(doc, noPostsSel)
+        LET max_posts = TO_INT(SUBSTITUTE(REGEX_MATCH(INNER_TEXT(doc, noPostsSel), "[0-9,]+")[0], ",", ""))
+
+        // scroll down until bottom
+        LET posts_saved = (
+            FOR i DO WHILE ELEMENT_EXISTS(doc, loadingSel)
+                // if second iteration or further, scroll to bottom, then to top
+                LET if = i > 0 && SCROLL_BOTTOM(doc) && WAIT(500) && SCROLL_TOP(doc)
+                
+                // loop only posts that haven't been saved yet
+                LET posts_saved = (
+                    FOR post in ELEMENTS(doc, postsSel)
+                        // HOVER(post)
+                        // WAIT(100000)aven't been saved yet
+                        RETURN {
+                            img: ELEMENT(post, 'img').attributes.src,
+                            alt: ELEMENT(post, 'img').attributes.alt,
+                        } 
+                )
+
+                RETURN posts_saved    
+        )
+
+        // save posts
+        RETURN {
+            user: profile,
+            followers: INNER_TEXT(doc, followersSel),
+            following: INNER_TEXT(doc, followingSel),
+            posts: UNIQUE(FLATTEN(posts_saved)),
+        }
+)
+RETURN profiles
