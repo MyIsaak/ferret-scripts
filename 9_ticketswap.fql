@@ -1,0 +1,137 @@
+LET doc = DOCUMENT("https://www.ticketswap.com/city/amsterdam/3", { driver: "cdp" })
+
+// event list selectors
+LET events_thumb_sel = "a[role=link]"
+
+// event thumbnail selectors
+LET name_sel = "h4"
+LET date_sel = "header"
+LET location_sel = X("//*[header]/span")
+
+// event ticket page type selector (ticket type page or ticket page)
+LET is_ticket_page = X("//h3[normalize-space(text()) = 'Available']")
+
+// event 'tickets' page header selectors
+LET informations_tab_sel = X("//a[normalize-space(text()) = 'Information']")
+LET available_sel = X("//div[h6[normalize-space(text()) = 'available']]/span")
+LET sold_sel = X("//div[h6[normalize-space(text()) = 'sold']]/span")
+LET wanted_sel = X("//div[h6[normalize-space(text()) = 'wanted']]/span")
+
+// event 'tickets' page body selectors
+LET rescheduled_sel = X("//*[normalize-space(text()) = 'was rescheduled']")
+LET blocked_sel = X("//*[normalize-space(text()) = 'Ticket sale blocked']")
+LET ticket_thumbs_sel = X("//*[a/div/div]/a")
+
+// ticket type thumbnail selectors
+LET ticket_type_sel = "h4"
+LET ticket_type_date_sel = "h5"
+
+// ticket thumbnail selectors
+LET ticket_amount_sel = "h4"
+LET ticket_date_sel = "h5"
+LET ticket_price_sel = "footer strong"
+
+// event 'information' page selectors
+LET artist_names_sel = "a[itemprop='url'] h4"
+LET organizer_name_sel = X("//div[h5[normalize-space(text()) = 'Organizer']]/h4")
+
+LET upcoming_events_sel = X("//*[normalize-space(text()) = 'upcoming events']")
+
+WAIT_ELEMENT(doc, events_thumb_sel)
+
+// scrap event thumb stats
+LET event_thumbs = (
+    FOR event_thumb IN ELEMENTS(doc, events_thumb_sel)
+        RETURN {
+            name: INNER_TEXT(event_thumb, name_sel),
+            date: INNER_TEXT(event_thumb, date_sel),
+            location: INNER_TEXT(event_thumb, location_sel),
+            url: ATTR_GET(event_thumb, "href").href
+        }
+)
+
+LET events = (
+    FOR event_thumb IN event_thumbs                
+        // open event page
+        NAVIGATE(doc, event_thumb.url)            
+
+        // check if ticket types page or ticket page (type selected or default type)
+        LET is_ticket_types_page = !ELEMENT_EXISTS(doc, is_ticket_page)
+                
+        LET ticket_pages = is_ticket_types_page && (
+            FOR ticket_type_thumb IN ELEMENTS(doc, ticket_thumbs_sel)
+                RETURN {
+                    type: INNER_TEXT(ticket_type_thumb, ticket_type_sel),
+                    date: INNER_TEXT(ticket_type_thumb, ticket_type_date_sel),
+                    url: ATTR_GET(ticket_type_thumb, "href").href
+                }            
+        ) || [{ type: "regular", date: event_thumb.date, url: event_thumb.url }]
+                
+        // scrap ticket stats
+        LET tickets = (
+            FOR ticket_page IN ticket_pages
+                LET if = is_ticket_types_page && NAVIGATE(doc, ticket_page.url)                                                             
+                
+                WAIT_ELEMENT(doc, available_sel)
+
+                LET available = TO_INT(INNER_TEXT(doc, available_sel))
+                LET sold = TO_INT(INNER_TEXT(doc, sold_sel))
+                LET wanted = TO_INT(INNER_TEXT(doc, wanted_sel))
+                                      
+                // TODO: canceled?
+                LET rescheduled = ELEMENT_EXISTS(doc, rescheduled_sel)
+                LET blocked = ELEMENT_EXISTS(doc, blocked_sel)
+        
+                // ticket price
+                // TODO: distinuish sold and non-sold 
+                LET listings = (
+                    FOR ticket_thumb IN ELEMENTS(doc, ticket_thumbs_sel)
+                        RETURN {
+                            price: SPLIT(INNER_TEXT(ticket_thumb, ticket_price_sel), "\n")[0],
+                            amount: INNER_TEXT(ticket_thumb, ticket_amount_sel),
+                            url: ATTR_GET(ticket_thumb, "href").href
+                        }
+                )
+        
+                // TODO: stats per type (avg,min,max)
+                // TODO: open each ticket price listing (get orig. price)        
+
+                RETURN {
+                    type: ticket_page.type,
+                    url: ticket_page.url,
+                    available: available,
+                    sold: sold,
+                    wanted: wanted,
+                    date: ticket_page.date,
+                    listings: listings,
+                    rescheduled: rescheduled,
+                    blocked: blocked,
+                }
+        )
+                
+        // click information tab
+        CLICK(doc, informations_tab_sel)
+        WAIT_NAVIGATION(doc)
+        WAIT(1000)
+
+        // artists and organizer           
+        LET artist_names = (
+            FOR artist_name IN ELEMENTS(doc, artist_names_sel)
+                RETURN INNER_TEXT(artist_name)            
+        )
+        LET organizer = ELEMENT_EXISTS(doc, organizer_name_sel) && INNER_TEXT(doc, organizer_name_sel) || none
+                
+        // scrap ticket id + name/type + original price + listing price   
+        RETURN {
+            timestamp: NOW(),
+            name: event_thumb.name,
+            date: event_thumb.date,
+            url: event_thumb.url,
+            location: event_thumb.location,
+            artist_names: artist_names,
+            organizer: organizer,
+            tickets
+        }
+)
+
+RETURN events
